@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="starGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)"/>
+  <!-- Decorative math symbol ring -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#ffffff" stroke-width="12" stroke-opacity="0.25" stroke-dasharray="24 16"/>
+  <!-- Central Math Pi and Sigma fusion / hero crest -->
+  <path d="M160 170 H352" stroke="#ffffff" stroke-width="32" stroke-linecap="round"/>
+  <path d="M200 170 V340 C200 355 185 365 170 365" stroke="#ffffff" stroke-width="32" stroke-linecap="round" fill="none"/>
+  <path d="M312 170 V340 C312 355 327 365 342 365" stroke="#ffffff" stroke-width="32" stroke-linecap="round" fill="none"/>
+  <polygon points="256,120 270,155 305,155 277,175 288,210 256,190 224,210 235,175 207,155 242,155" fill="url(#starGrad)"/>
+</svg>

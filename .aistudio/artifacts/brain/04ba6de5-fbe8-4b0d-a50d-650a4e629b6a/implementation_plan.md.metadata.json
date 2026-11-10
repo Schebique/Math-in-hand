@@ -1,0 +1,6 @@
+{
+  "summary":  "Komplexní plán implementace moderní vzdělávací aplikace pro procvičování matematiky (MathHero / MatikaMaster) přizpůsobené pro dceru (2. ročník obchodního lycea) i syna (9. třída / CERMAT přijímačky) s možností rozšíření na VŠ osnovy. Zahrnuje sokratovského AI rádce, Duolingo gamifikaci, rodičovský dashboard, export do PDF, offline PWA a tmavý režim.",
+  "updatedAt":  "2026-11-10T12:25:07.605698902Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

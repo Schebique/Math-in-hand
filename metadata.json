@@ -1,0 +1,6 @@
+{
+  "name": "MathHero – Inteligentní matematický trenažér s AI",
+  "description": "Procvičování matematiky pro střední školy (obchodní lyceum) i 9. třídu (přijímačky) se sokratovskou AI nápovědou, gamifikací, reálným využitím látky a rodičovským dashboardem.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
