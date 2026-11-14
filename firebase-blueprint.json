@@ -1,0 +1,495 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Root account metadata for an authenticated parent or individual student.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "accountType": {
+          "type": "string",
+          "enum": ["family_parent", "individual_student"]
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["google"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "accountType", "provider", "createdAt", "updatedAt"]
+    },
+    "PrivateUserInfo": {
+      "title": "PrivateUserInfo",
+      "description": "PII-isolated private contact record (email) strictly accessible only by the owner.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "updatedAt"]
+    },
+    "ParentSettingsDoc": {
+      "title": "ParentSettingsDoc",
+      "description": "Hashed parent PIN settings and daily time limits scoped to one family vault.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "dailyTimeLimitMinutes": {
+          "type": "integer"
+        },
+        "soundEnabled": {
+          "type": "boolean"
+        },
+        "allowedGrades": {
+          "type": "array",
+          "description": "Bounded list of allowed GradeLevel strings (max 10)."
+        },
+        "pinHash": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128
+        },
+        "pinSalt": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 64
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerUid",
+        "dailyTimeLimitMinutes",
+        "soundEnabled",
+        "allowedGrades",
+        "pinHash",
+        "pinSalt",
+        "updatedAt"
+      ]
+    },
+    "StudentProfileDoc": {
+      "title": "StudentProfileDoc",
+      "description": "Student profile belonging exclusively to the parent or student user account.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "role": {
+          "type": "string",
+          "enum": ["daughter", "son", "custom", "student"]
+        },
+        "schoolType": {
+          "type": "string",
+          "enum": [
+            "primary_school",
+            "cermat_prep",
+            "grammar_school",
+            "business_lyceum",
+            "vocational_sos",
+            "university"
+          ]
+        },
+        "gradeYear": {
+          "type": "integer"
+        },
+        "studyGoal": {
+          "type": "string",
+          "enum": ["cermat_entry", "regular_grades", "graduation_maturita", "college_math"]
+        },
+        "grade": {
+          "type": "string",
+          "enum": ["lyceum_2", "grade_9", "university", "primary_mid", "grammar_school"]
+        },
+        "avatarId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "avatarEmoji": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "xp": {
+          "type": "integer"
+        },
+        "coins": {
+          "type": "integer"
+        },
+        "streak": {
+          "type": "integer"
+        },
+        "lastActiveDate": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 20
+        },
+        "streakFreezeCount": {
+          "type": "integer"
+        },
+        "unlockedAvatars": {
+          "type": "array"
+        },
+        "unlockedBadges": {
+          "type": "array"
+        },
+        "todayMinutesStudied": {
+          "type": "integer"
+        },
+        "linkedParentUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "name",
+        "role",
+        "schoolType",
+        "gradeYear",
+        "studyGoal",
+        "grade",
+        "avatarId",
+        "avatarEmoji",
+        "xp",
+        "coins",
+        "streak",
+        "lastActiveDate",
+        "streakFreezeCount",
+        "unlockedAvatars",
+        "unlockedBadges",
+        "todayMinutesStudied",
+        "updatedAt"
+      ]
+    },
+    "ProblemHistoryDoc": {
+      "title": "ProblemHistoryDoc",
+      "description": "Solved math problem attempt with SM-2 spaced repetition state owned by user UID.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "problemId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "studentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "topic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "topicName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "grade": {
+          "type": "string",
+          "enum": ["lyceum_2", "grade_9", "university", "primary_mid", "grammar_school"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "userAnswer": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "isCorrect": {
+          "type": "boolean"
+        },
+        "hintsUsed": {
+          "type": "integer"
+        },
+        "timeSpentSeconds": {
+          "type": "integer"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "nextReviewDate": {
+          "type": "number"
+        },
+        "interval": {
+          "type": "number"
+        },
+        "repetitions": {
+          "type": "integer"
+        },
+        "easeFactor": {
+          "type": "number"
+        },
+        "linkedParentUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "problemId",
+        "studentId",
+        "topic",
+        "topicName",
+        "grade",
+        "title",
+        "userAnswer",
+        "isCorrect",
+        "hintsUsed",
+        "timeSpentSeconds",
+        "timestamp",
+        "nextReviewDate",
+        "interval",
+        "repetitions",
+        "easeFactor",
+        "createdAt"
+      ]
+    },
+    "FamilyInviteDoc": {
+      "title": "FamilyInviteDoc",
+      "description": "One-time pairing invite code created by a parent to link an independent child Google account.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 16,
+          "pattern": "^[A-Z0-9\\-]+$"
+        },
+        "parentUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "parentName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "childLabel": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "invitedEmail": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "accepted", "revoked"]
+        },
+        "acceptedByUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "acceptedChildName": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "expiresAt": {
+          "type": "integer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "code",
+        "parentUid",
+        "parentName",
+        "childLabel",
+        "invitedEmail",
+        "status",
+        "acceptedByUid",
+        "acceptedChildName",
+        "expiresAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FamilyLinkDoc": {
+      "title": "FamilyLinkDoc",
+      "description": "Verified active link between a parent Google account and an independent child Google account.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 260,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "parentUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "parentName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "childUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "childName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "childEmail": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "inviteCode": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 16,
+          "pattern": "^[A-Z0-9\\-]+$"
+        },
+        "dailyTimeLimitMinutes": {
+          "type": "integer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "parentUid",
+        "parentName",
+        "childUid",
+        "childName",
+        "childEmail",
+        "inviteCode",
+        "dailyTimeLimitMinutes",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "Verified account root (role, displayName) isolated per UID."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/PrivateUserInfo" },
+      "description": "PII-isolated private profile document storing email strictly for the owner."
+    },
+    "/users/{userId}/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/ParentSettingsDoc" },
+      "description": "Hashed parent PIN and daily time limits strictly for the parent UID."
+    },
+    "/users/{userId}/students/{studentId}": {
+      "schema": { "$ref": "#/entities/StudentProfileDoc" },
+      "description": "Child/student profiles owned by the authenticated user UID and readable by linked parent."
+    },
+    "/users/{userId}/history/{historyId}": {
+      "schema": { "$ref": "#/entities/ProblemHistoryDoc" },
+      "description": "Solved problem history & SM-2 intervals owned by the user UID and readable by linked parent."
+    },
+    "/familyInvites/{inviteCode}": {
+      "schema": { "$ref": "#/entities/FamilyInviteDoc" },
+      "description": "Pairing invite codes created by parents and accepted once by invited children."
+    },
+    "/familyLinks/{linkId}": {
+      "schema": { "$ref": "#/entities/FamilyLinkDoc" },
+      "description": "Active parent-child account links keyed deterministically by parentUid__childUid."
+    }
+  }
+}

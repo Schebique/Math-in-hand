@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { RefreshCw, Copy, Check, Upload, Download, X, Smartphone, Laptop, Cloud } from 'lucide-react';
 import { exportSyncPackage, importSyncPackage } from '../utils/storage';
 
@@ -6,17 +7,26 @@ interface SyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDataImported: () => void;
+  userId?: string | null;
 }
 
 export const SyncModal: React.FC<SyncModalProps> = ({
   isOpen,
   onClose,
   onDataImported,
+  userId = null,
 }) => {
-  const [syncCode, setSyncCode] = useState(() => exportSyncPackage());
+  const [syncCode, setSyncCode] = useState(() => exportSyncPackage(userId));
   const [importCode, setImportCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  useEffect(() => {
+    if (isOpen) {
+      setSyncCode(exportSyncPackage(userId));
+      setImportStatus('idle');
+    }
+  }, [isOpen, userId]);
 
   if (!isOpen) return null;
 
@@ -28,7 +38,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 
   const handleImport = () => {
     if (!importCode.trim()) return;
-    const success = importSyncPackage(importCode.trim());
+    const success = importSyncPackage(importCode.trim(), userId);
     if (success) {
       setImportStatus('success');
       setTimeout(() => {
@@ -50,9 +60,9 @@ export const SyncModal: React.FC<SyncModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 sm:p-7 animate-in fade-in zoom-in-95 duration-200 space-y-5">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 pt-16 pb-20 sm:p-6 overflow-y-auto">
+      <div className="relative w-full max-w-lg my-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 sm:p-7 animate-in fade-in zoom-in-95 duration-200 space-y-5 max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -66,10 +76,12 @@ export const SyncModal: React.FC<SyncModalProps> = ({
           </div>
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white font-display">
-              Synchronizace mezi zařízeními
+              Synchronizace a offline záloha
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Přenos pokroku a účtů mezi mobilem, tabletem a počítačem
+              {userId
+                ? 'Cloud Firestore synchronizace je aktivní pro váš Google účet. Zde můžete vytvořit i lokální zálohu.'
+                : 'Přenos pokroku a účtů mezi mobilem, tabletem a počítačem'}
             </p>
           </div>
         </div>
@@ -83,7 +95,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
           <span className="text-slate-300 dark:text-slate-600 font-bold">⟷</span>
           <div className="flex flex-col items-center gap-1">
             <Cloud className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-            <span className="font-semibold">Cloud Sync</span>
+            <span className="font-semibold">{userId ? 'Firestore Cloud' : 'Lokální přenos'}</span>
           </div>
           <span className="text-slate-300 dark:text-slate-600 font-bold">⟷</span>
           <div className="flex flex-col items-center gap-1">
@@ -162,6 +174,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -12,23 +12,30 @@ import {
   TrendingUp,
   Brain,
   ChevronDown,
+  Loader2,
 } from 'lucide-react';
 import { Problem, StudentProfile, TopicCategory } from '../types';
-import { STATIC_PROBLEMS, generateDynamicProblem } from '../data/problems';
+import {
+  generateDynamicProblem,
+  getCurriculumTopicsForSchool,
+  getArchetypeCountForSchool,
+} from '../data/problems';
 import { SocraticDrawer } from './SocraticDrawer';
 
 interface ProblemViewProps {
   student: StudentProfile;
   onProblemSolved: (problem: Problem, isCorrect: boolean, hintsUsed: number, timeSpentSec: number) => void;
+  onOpenSchoolWizard?: () => void;
 }
 
 export const ProblemView: React.FC<ProblemViewProps> = ({
   student,
   onProblemSolved,
+  onOpenSchoolWizard,
 }) => {
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
   const [currentProblem, setCurrentProblem] = useState<Problem>(() =>
-    generateDynamicProblem(student.grade)
+    generateDynamicProblem(student.grade, undefined, student.schoolType, student.id, student.gradeYear)
   );
   const [userAnswer, setUserAnswer] = useState('');
   const [isEvaluated, setIsEvaluated] = useState(false);
@@ -38,23 +45,76 @@ export const ProblemView: React.FC<ProblemViewProps> = ({
   const [showSocratic, setShowSocratic] = useState(false);
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [shake, setShake] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [recentTitles, setRecentTitles] = useState<string[]>([]);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
 
-  // Update problem when student grade changes
+  const availableTopics = getCurriculumTopicsForSchool(student.schoolType, student.gradeYear);
+  const archetypeCount = getArchetypeCountForSchool(student.schoolType, student.gradeYear);
+
+  // Update problem and reset topic filter when student, grade, or schoolType changes
   useEffect(() => {
-    loadNewProblem();
-  }, [student.grade]);
+    setSelectedTopic('all');
+    loadNewProblem('all');
+  }, [student.id, student.grade, student.schoolType, student.gradeYear]);
 
   const loadNewProblem = (topicOverride?: string) => {
     const topicToUse = topicOverride !== undefined ? topicOverride : selectedTopic;
     const cat = topicToUse === 'all' ? undefined : (topicToUse as TopicCategory);
-    const nextProb = generateDynamicProblem(student.grade, cat);
+    const nextProb = generateDynamicProblem(
+      student.grade,
+      cat,
+      student.schoolType,
+      student.id,
+      student.gradeYear
+    );
     setCurrentProblem(nextProb);
+    setRecentTitles((prev) => [...prev.slice(-7), nextProb.title]);
     setUserAnswer('');
     setIsEvaluated(false);
     setIsCorrect(false);
     setHintsUsedCount(0);
     setShowSolution(false);
+    setAiNotice(null);
     setStartTime(Date.now());
+  };
+
+  const loadAIProblem = async () => {
+    if (isGeneratingAI) return;
+    setIsGeneratingAI(true);
+    setAiNotice(null);
+    try {
+      const response = await fetch('/api/generate-problem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schoolType: student.schoolType,
+          grade: student.grade,
+          gradeYear: student.gradeYear,
+          topic: selectedTopic,
+          recentTitles,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('AI generátor nedostupný');
+      }
+
+      const aiProblem: Problem = await response.json();
+      setCurrentProblem(aiProblem);
+      setRecentTitles((prev) => [...prev.slice(-7), aiProblem.title]);
+      setUserAnswer('');
+      setIsEvaluated(false);
+      setIsCorrect(false);
+      setHintsUsedCount(0);
+      setShowSolution(false);
+      setStartTime(Date.now());
+    } catch {
+      loadNewProblem();
+      setAiNotice('AI generátor je momentálně nedostupný nebo offline — vygeneroval jsem ověřenou úlohu z lokálních osnov.');
+    } finally {
+      setIsGeneratingAI(false);
+    }
   };
 
   const handleTopicChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -66,14 +126,11 @@ export const ProblemView: React.FC<ProblemViewProps> = ({
   const cleanAnswer = (ans: string) => {
     return ans
       .toLowerCase()
+      .replace(/−/g, '-')
       .replace(/\s+/g, '')
       .replace(/,/g, '.')
-      .replace(/kč/g, '')
-      .replace(/ks/g, '')
-      .replace(/m/g, '')
-      .replace(/%/g, '')
-      .replace(/hodin/g, '')
-      .replace(/h/g, '');
+      .replace(/^(x|k)=/i, '')
+      .replace(/(kč|ks|cm2|cm²|m3|m³|km|min|minut|hodin|hod|dřívek|balíčků|dospělých|litrů|stupňů|%|°|m|g|l|h)$/i, '');
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -85,6 +142,11 @@ export const ProblemView: React.FC<ProblemViewProps> = ({
     const cleanedCorrect = cleanAnswer(currentProblem.correctAnswer);
 
     let match = cleanedInput === cleanedCorrect;
+
+    // Numeric tolerance check for decimal answers
+    if (!match && !Number.isNaN(Number(cleanedInput)) && !Number.isNaN(Number(cleanedCorrect))) {
+      match = Math.abs(Number(cleanedInput) - Number(cleanedCorrect)) < 0.015;
+    }
 
     // Check acceptable answers if any
     if (!match && currentProblem.acceptableAnswers) {
@@ -123,31 +185,42 @@ export const ProblemView: React.FC<ProblemViewProps> = ({
     }
   };
 
-  const gradeBadgeTitle =
-    student.grade === 'lyceum_2'
-      ? '2. ročník – Obchodní lyceum'
-      : student.grade === 'grade_9'
-      ? '9. třída – CERMAT přijímačky'
-      : 'Vysoká škola – Matematika';
+  const getBadgeTitle = () => {
+    if (student.schoolType === 'cermat_prep') return 'CERMAT 9. třída (přijímačky)';
+    if (student.schoolType === 'business_lyceum') return `Obchodní lyceum (${student.gradeYear}. ročník)`;
+    if (student.schoolType === 'grammar_school') return `Gymnázium (${student.gradeYear}. ročník)`;
+    if (student.schoolType === 'primary_school') return `2. stupeň ZŠ (${student.gradeYear}. třída)`;
+    if (student.schoolType === 'vocational_sos') return `SOŠ (${student.gradeYear}. ročník)`;
+    if (student.schoolType === 'university') return `Vysoká škola (${student.gradeYear}. ročník)`;
+    return 'Matematika';
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6">
       {/* Top Meta Strip */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
-            {gradeBadgeTitle}
+            {getBadgeTitle()}
           </span>
-          <span className="text-xs text-slate-500 dark:text-slate-400">·</span>
+          {onOpenSchoolWizard && (
+            <button
+              onClick={onOpenSchoolWizard}
+              className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
+            >
+              (změnit školu / ročník)
+            </button>
+          )}
+          <span className="text-xs text-slate-400">·</span>
           <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-            {currentProblem.topicName}
+            {currentProblem.curriculumRef || currentProblem.topicName}
           </span>
         </div>
 
         {/* Topic filter selector */}
         <div className="flex items-center gap-2">
-          <label htmlFor="topic-select" className="text-xs text-slate-500 dark:text-slate-400">
-            Filtrovat téma:
+          <label htmlFor="topic-select" className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+            Téma ({archetypeCount} typů):
           </label>
           <div className="relative">
             <select
@@ -156,29 +229,12 @@ export const ProblemView: React.FC<ProblemViewProps> = ({
               onChange={handleTopicChange}
               className="text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 pl-3 pr-8 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 appearance-none"
             >
-              <option value="all">Všechna témata ročníku</option>
-              {student.grade === 'lyceum_2' && (
-                <>
-                  <option value="finance">Finanční matematika & úročení</option>
-                  <option value="functions">Funkce & Bod zvratu</option>
-                  <option value="sequences">Posloupnosti</option>
-                  <option value="probability">Pravděpodobnost & Riziko</option>
-                </>
-              )}
-              {student.grade === 'grade_9' && (
-                <>
-                  <option value="equations">Lineární rovnice</option>
-                  <option value="word_problems">Slovní úlohy (pohyb, práce)</option>
-                  <option value="fractions_percentages">Zlomky & Procenta</option>
-                  <option value="geometry">Geometrie & Pythagorova věta</option>
-                </>
-              )}
-              {student.grade === 'university' && (
-                <>
-                  <option value="calculus">Diferenciální a integrální počet</option>
-                  <option value="matrices">Lineární algebra & Matice</option>
-                </>
-              )}
+              <option value="all">Všechna témata osnov</option>
+              {availableTopics.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -350,9 +406,16 @@ export const ProblemView: React.FC<ProblemViewProps> = ({
           </div>
         )}
 
+        {/* Optional AI Fallback Notice */}
+        {aiNotice && (
+          <div className="mt-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 text-xs text-amber-800 dark:text-amber-200">
+            {aiNotice}
+          </div>
+        )}
+
         {/* Bottom Actions Bar */}
         <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowSocratic(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors"
@@ -370,13 +433,30 @@ export const ProblemView: React.FC<ProblemViewProps> = ({
             </button>
           </div>
 
-          <button
-            onClick={() => loadNewProblem()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors ml-auto"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Vygenerovat jiný příklad</span>
-          </button>
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={loadAIProblem}
+              disabled={isGeneratingAI}
+              title="Vygenerovat originální slovní nebo výpočtovou úlohu pomocí Gemini AI pro tento ročník"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800/60 rounded-lg transition-colors disabled:opacity-60"
+            >
+              {isGeneratingAI ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              <span>{isGeneratingAI ? 'Generuji AI úlohu...' : 'Nová AI úloha'}</span>
+            </button>
+
+            <button
+              onClick={() => loadNewProblem()}
+              disabled={isGeneratingAI}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Vygenerovat jiný příklad</span>
+            </button>
+          </div>
         </div>
 
         {/* Step-by-step complete solution breakdown */}

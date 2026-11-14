@@ -1,4 +1,18 @@
-export type GradeLevel = 'lyceum_2' | 'grade_9' | 'university';
+export type GradeLevel = 'lyceum_2' | 'grade_9' | 'university' | 'primary_mid' | 'grammar_school';
+
+export type SchoolType =
+  | 'primary_school' // 2. stupeň ZŠ (6.–9. třída)
+  | 'cermat_prep' // Intenzivní CERMAT přijímačky
+  | 'grammar_school' // Gymnázium (4leté / víceleté)
+  | 'business_lyceum' // Obchodní lyceum / akademie
+  | 'vocational_sos' // Střední odborná škola SOŠ
+  | 'university'; // Vysoká škola
+
+export type StudyGoal =
+  | 'cermat_entry' // Přijímačky na SŠ
+  | 'regular_grades' // Běžné učení a zlepšení známek
+  | 'graduation_maturita' // Příprava k maturitě
+  | 'college_math'; // VŠ zkoušky a kalkulus
 
 export type TopicCategory =
   | 'finance'
@@ -10,13 +24,15 @@ export type TopicCategory =
   | 'sequences'
   | 'probability'
   | 'calculus'
-  | 'matrices';
+  | 'matrices'
+  | 'arithmetic_basic';
 
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 
 export interface Problem {
   id: string;
   grade: GradeLevel;
+  schoolType?: SchoolType;
   topic: TopicCategory;
   topicName: string;
   title: string;
@@ -30,12 +46,27 @@ export interface Problem {
   hints: string[];
   options?: string[];
   type: 'number' | 'text' | 'choice';
+  archetypeId?: string;
+  curriculumRef?: string;
+  variantSeed?: string;
+}
+
+export interface AuthSession {
+  userId: string;
+  email: string;
+  name: string;
+  provider: 'google' | 'apple' | 'guest';
+  accountType: 'family_parent' | 'individual_student';
+  avatarUrl?: string;
 }
 
 export interface StudentProfile {
   id: string;
   name: string;
-  role: 'daughter' | 'son' | 'custom';
+  role: 'daughter' | 'son' | 'custom' | 'student';
+  schoolType: SchoolType;
+  gradeYear: number; // e.g. 6-9 for primary, 1-4 for secondary, 1-2 for university
+  studyGoal: StudyGoal;
   grade: GradeLevel;
   avatarId: string;
   avatarEmoji: string;
@@ -47,6 +78,8 @@ export interface StudentProfile {
   unlockedAvatars: string[];
   unlockedBadges: string[];
   todayMinutesStudied: number;
+  ownerUid?: string;
+  linkedParentUid?: string;
 }
 
 export interface ProblemHistoryItem {
@@ -67,6 +100,30 @@ export interface ProblemHistoryItem {
   interval: number; // in days
   repetitions: number;
   easeFactor: number;
+  linkedParentUid?: string;
+}
+
+export interface FamilyInvite {
+  code: string;
+  parentUid: string;
+  parentName: string;
+  childLabel: string;
+  invitedEmail: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  acceptedByUid: string;
+  acceptedChildName: string;
+  expiresAt: number;
+}
+
+export interface FamilyLink {
+  id: string;
+  parentUid: string;
+  parentName: string;
+  childUid: string;
+  childName: string;
+  childEmail: string;
+  inviteCode: string;
+  dailyTimeLimitMinutes: number;
 }
 
 export interface ParentSettings {
@@ -74,6 +131,8 @@ export interface ParentSettings {
   dailyTimeLimitMinutes: number;
   allowedGrades: GradeLevel[];
   soundEnabled: boolean;
+  pinHash?: string;
+  pinSalt?: string;
 }
 
 export interface Badge {

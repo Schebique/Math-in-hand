@@ -1,0 +1,474 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Default-Deny Safety Net (Pillar 0)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =====================================================
+    // Global Hardened Primitives
+    // =====================================================
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidLinkId(id) {
+      return id is string && id.size() >= 3 && id.size() <= 260 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidInviteCode(code) {
+      return code is string && code.size() >= 6 && code.size() <= 16 && code.matches('^[A-Z0-9\\-]+$');
+    }
+
+    function hasParentAccount(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function isValidStringList(arr, maxLen) {
+      return arr is list && arr.size() <= maxLen && (arr.size() == 0 || arr[0] is string);
+    }
+
+    function hasValidLinkedParentField(data, childUid) {
+      return !('linkedParentUid' in data)
+        || data.linkedParentUid == ''
+        || (isValidId(data.linkedParentUid)
+          && data.linkedParentUid != childUid
+          && (
+            exists(/databases/$(database)/documents/familyLinks/$(data.linkedParentUid + '__' + childUid))
+            || existsAfter(/databases/$(database)/documents/familyLinks/$(data.linkedParentUid + '__' + childUid))
+          ));
+    }
+
+    // =====================================================
+    // Validation Blueprints (Standalone Helpers)
+    // =====================================================
+    function isValidUserAccount(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'accountType', 'provider', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'accountType', 'provider', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+        && data.accountType in ['family_parent', 'individual_student']
+        && data.provider in ['google']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidParentSettings(data, userId) {
+      return data.keys().hasAll(['ownerUid', 'dailyTimeLimitMinutes', 'soundEnabled', 'allowedGrades', 'pinHash', 'pinSalt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerUid', 'dailyTimeLimitMinutes', 'soundEnabled', 'allowedGrades', 'pinHash', 'pinSalt', 'updatedAt'])
+        && isValidId(data.ownerUid)
+        && data.ownerUid == userId
+        && data.ownerUid == request.auth.uid
+        && data.dailyTimeLimitMinutes is int && data.dailyTimeLimitMinutes >= 5 && data.dailyTimeLimitMinutes <= 300
+        && data.soundEnabled is bool
+        && isValidStringList(data.allowedGrades, 10)
+        && data.pinHash is string && data.pinHash.size() >= 16 && data.pinHash.size() <= 128
+        && data.pinSalt is string && data.pinSalt.size() >= 4 && data.pinSalt.size() <= 64
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudentProfile(data, userId, studentId) {
+      return data.keys().hasAll([
+          'id', 'ownerUid', 'name', 'role', 'schoolType', 'gradeYear',
+          'studyGoal', 'grade', 'avatarId', 'avatarEmoji', 'xp', 'coins',
+          'streak', 'lastActiveDate', 'streakFreezeCount', 'unlockedAvatars',
+          'unlockedBadges', 'todayMinutesStudied', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerUid', 'name', 'role', 'schoolType', 'gradeYear',
+          'studyGoal', 'grade', 'avatarId', 'avatarEmoji', 'xp', 'coins',
+          'streak', 'lastActiveDate', 'streakFreezeCount', 'unlockedAvatars',
+          'unlockedBadges', 'todayMinutesStudied', 'linkedParentUid', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == studentId
+        && isValidId(data.ownerUid)
+        && data.ownerUid == userId
+        && data.ownerUid == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 50
+        && data.role in ['daughter', 'son', 'custom', 'student']
+        && data.schoolType in ['primary_school', 'cermat_prep', 'grammar_school', 'business_lyceum', 'vocational_sos', 'university']
+        && data.gradeYear is int && data.gradeYear >= 1 && data.gradeYear <= 12
+        && data.studyGoal in ['cermat_entry', 'regular_grades', 'graduation_maturita', 'college_math']
+        && data.grade in ['lyceum_2', 'grade_9', 'university', 'primary_mid', 'grammar_school']
+        && data.avatarId is string && data.avatarId.size() >= 1 && data.avatarId.size() <= 64
+        && data.avatarEmoji is string && data.avatarEmoji.size() >= 1 && data.avatarEmoji.size() <= 16
+        && data.xp is int && data.xp >= 0 && data.xp <= 10000000
+        && data.coins is int && data.coins >= 0 && data.coins <= 10000000
+        && data.streak is int && data.streak >= 0 && data.streak <= 10000
+        && data.lastActiveDate is string && data.lastActiveDate.size() >= 8 && data.lastActiveDate.size() <= 20
+        && data.streakFreezeCount is int && data.streakFreezeCount >= 0 && data.streakFreezeCount <= 100
+        && isValidStringList(data.unlockedAvatars, 20)
+        && isValidStringList(data.unlockedBadges, 30)
+        && data.todayMinutesStudied is int && data.todayMinutesStudied >= 0 && data.todayMinutesStudied <= 1440
+        && (!('linkedParentUid' in data) || data.linkedParentUid == '' || isValidId(data.linkedParentUid))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProblemHistory(data, userId, historyId) {
+      return data.keys().hasAll([
+          'id', 'ownerUid', 'problemId', 'studentId', 'topic', 'topicName',
+          'grade', 'title', 'userAnswer', 'isCorrect', 'hintsUsed',
+          'timeSpentSeconds', 'timestamp', 'nextReviewDate', 'interval',
+          'repetitions', 'easeFactor', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerUid', 'problemId', 'studentId', 'topic', 'topicName',
+          'grade', 'title', 'userAnswer', 'isCorrect', 'hintsUsed',
+          'timeSpentSeconds', 'timestamp', 'nextReviewDate', 'interval',
+          'repetitions', 'easeFactor', 'linkedParentUid', 'createdAt'
+        ])
+        && isValidId(data.id)
+        && data.id == historyId
+        && isValidId(data.ownerUid)
+        && data.ownerUid == userId
+        && data.ownerUid == request.auth.uid
+        && data.problemId is string && data.problemId.size() >= 1 && data.problemId.size() <= 128
+        && isValidId(data.studentId)
+        && data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 50
+        && data.topicName is string && data.topicName.size() >= 1 && data.topicName.size() <= 150
+        && data.grade in ['lyceum_2', 'grade_9', 'university', 'primary_mid', 'grammar_school']
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.userAnswer is string && data.userAnswer.size() <= 200
+        && data.isCorrect is bool
+        && data.hintsUsed is int && data.hintsUsed >= 0 && data.hintsUsed <= 50
+        && data.timeSpentSeconds is int && data.timeSpentSeconds >= 0 && data.timeSpentSeconds <= 86400
+        && (data.timestamp is int || data.timestamp is float)
+        && (data.nextReviewDate is int || data.nextReviewDate is float)
+        && (data.interval is int || data.interval is float)
+        && data.repetitions is int && data.repetitions >= 0 && data.repetitions <= 1000
+        && (data.easeFactor is int || data.easeFactor is float)
+        && (!('linkedParentUid' in data) || data.linkedParentUid == '' || isValidId(data.linkedParentUid))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidFamilyInvite(data, inviteCode) {
+      return data.keys().hasAll([
+          'code', 'parentUid', 'parentName', 'childLabel', 'invitedEmail',
+          'status', 'acceptedByUid', 'acceptedChildName', 'expiresAt',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'code', 'parentUid', 'parentName', 'childLabel', 'invitedEmail',
+          'status', 'acceptedByUid', 'acceptedChildName', 'expiresAt',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidInviteCode(data.code)
+        && data.code == inviteCode
+        && isValidId(data.parentUid)
+        && data.parentName is string && data.parentName.size() >= 1 && data.parentName.size() <= 80
+        && data.childLabel is string && data.childLabel.size() <= 50
+        && data.invitedEmail is string && data.invitedEmail.size() <= 200
+        && data.status in ['pending', 'accepted', 'revoked']
+        && data.acceptedByUid is string && data.acceptedByUid.size() <= 128
+        && data.acceptedChildName is string && data.acceptedChildName.size() <= 50
+        && data.expiresAt is int && data.expiresAt > 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFamilyLink(data, linkId) {
+      return data.keys().hasAll([
+          'id', 'parentUid', 'parentName', 'childUid', 'childName',
+          'childEmail', 'inviteCode', 'dailyTimeLimitMinutes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'parentUid', 'parentName', 'childUid', 'childName',
+          'childEmail', 'inviteCode', 'dailyTimeLimitMinutes', 'createdAt', 'updatedAt'
+        ])
+        && isValidLinkId(data.id)
+        && data.id == linkId
+        && isValidId(data.parentUid)
+        && isValidId(data.childUid)
+        && data.parentUid != data.childUid
+        && data.id == (data.parentUid + '__' + data.childUid)
+        && data.parentName is string && data.parentName.size() >= 1 && data.parentName.size() <= 80
+        && data.childName is string && data.childName.size() >= 1 && data.childName.size() <= 50
+        && data.childEmail is string && data.childEmail.size() <= 200
+        && isValidInviteCode(data.inviteCode)
+        && data.dailyTimeLimitMinutes is int && data.dailyTimeLimitMinutes >= 5 && data.dailyTimeLimitMinutes <= 300
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // =====================================================
+    // Collection Match Blocks (Zero-Trust Per-Parent Isolation)
+    // =====================================================
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId) && (resource == null || existing().uid == request.auth.uid);
+      allow list: if false;
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'accountType', 'updatedAt']);
+
+      allow delete: if false;
+
+      // PII-isolated private profile
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && docId == 'profile' && isOwner(userId) && (resource == null || existing().uid == request.auth.uid);
+        allow list: if false;
+
+        allow create: if isValidId(userId) && docId == 'profile'
+          && isOwner(userId)
+          && isValidPrivateProfile(incoming(), userId)
+          && incoming().updatedAt == request.time
+          && hasParentAccount(userId);
+
+        allow update: if isValidId(userId) && docId == 'profile'
+          && isOwner(userId)
+          && isValidPrivateProfile(incoming(), userId)
+          && incoming().uid == existing().uid
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']);
+
+        allow delete: if false;
+      }
+
+      // Parent settings & hashed PIN
+      match /settings/{settingId} {
+        allow get: if isValidId(userId) && isValidId(settingId) && settingId == 'parent' && isOwner(userId) && (resource == null || existing().ownerUid == request.auth.uid);
+        allow list: if false;
+
+        allow create: if isValidId(userId) && settingId == 'parent'
+          && isOwner(userId)
+          && isValidParentSettings(incoming(), userId)
+          && incoming().updatedAt == request.time
+          && hasParentAccount(userId);
+
+        allow update: if isValidId(userId) && settingId == 'parent'
+          && isOwner(userId)
+          && isValidParentSettings(incoming(), userId)
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'dailyTimeLimitMinutes', 'soundEnabled', 'allowedGrades', 'pinHash', 'pinSalt', 'updatedAt'
+          ]);
+
+        allow delete: if false;
+      }
+
+      // Children / student profiles owned by userId; readable by linked parent
+      match /students/{studentId} {
+        allow get: if isValidId(userId) && isValidId(studentId) && (
+          (isOwner(userId) && (resource == null || existing().ownerUid == request.auth.uid))
+          || (isVerifiedUser() && resource != null && existing().linkedParentUid == request.auth.uid)
+        );
+        allow list: if (isOwner(userId) && existing().ownerUid == request.auth.uid)
+          || (isVerifiedUser() && existing().linkedParentUid == request.auth.uid);
+
+        allow create: if isValidId(userId) && isValidId(studentId)
+          && isOwner(userId)
+          && isValidStudentProfile(incoming(), userId, studentId)
+          && hasValidLinkedParentField(incoming(), userId)
+          && incoming().updatedAt == request.time
+          && hasParentAccount(userId);
+
+        allow update: if isValidId(userId) && isValidId(studentId)
+          && isOwner(userId)
+          && isValidStudentProfile(incoming(), userId, studentId)
+          && hasValidLinkedParentField(incoming(), userId)
+          && incoming().id == existing().id
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'role', 'schoolType', 'gradeYear', 'studyGoal', 'grade',
+            'avatarId', 'avatarEmoji', 'xp', 'coins', 'streak', 'lastActiveDate',
+            'streakFreezeCount', 'unlockedAvatars', 'unlockedBadges',
+            'todayMinutesStudied', 'linkedParentUid', 'updatedAt'
+          ]);
+
+        allow delete: if isValidId(userId) && isValidId(studentId) && isOwner(userId) && existing().ownerUid == request.auth.uid;
+      }
+
+      // Solved problem history & SM-2 intervals owned by userId; readable by linked parent
+      match /history/{historyId} {
+        allow get: if isValidId(userId) && isValidId(historyId) && (
+          (isOwner(userId) && (resource == null || existing().ownerUid == request.auth.uid))
+          || (isVerifiedUser() && resource != null && existing().linkedParentUid == request.auth.uid)
+        );
+        allow list: if (isOwner(userId) && existing().ownerUid == request.auth.uid)
+          || (isVerifiedUser() && existing().linkedParentUid == request.auth.uid);
+
+        allow create: if isValidId(userId) && isValidId(historyId)
+          && isOwner(userId)
+          && isValidProblemHistory(incoming(), userId, historyId)
+          && hasValidLinkedParentField(incoming(), userId)
+          && incoming().createdAt == request.time
+          && hasParentAccount(userId);
+
+        allow update: if isValidId(userId) && isValidId(historyId)
+          && isOwner(userId)
+          && isValidProblemHistory(incoming(), userId, historyId)
+          && hasValidLinkedParentField(incoming(), userId)
+          && incoming().id == existing().id
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['linkedParentUid']);
+
+        allow delete: if false;
+      }
+    }
+
+    // =====================================================
+    // Family Invites (One-time pairing codes & Gmail invites)
+    // =====================================================
+    match /familyInvites/{inviteCode} {
+      allow get: if isValidInviteCode(inviteCode) && isVerifiedUser() && (
+        resource == null
+        || existing().parentUid == request.auth.uid
+        || (existing().status == 'pending' && (
+          existing().invitedEmail == ''
+          || (request.auth.token.email is string && existing().invitedEmail == request.auth.token.email.lower())
+        ))
+      );
+
+      allow list: if isVerifiedUser() && (
+        existing().parentUid == request.auth.uid
+        || (existing().status == 'pending' && request.auth.token.email is string && existing().invitedEmail == request.auth.token.email.lower())
+      );
+
+      allow create: if isValidInviteCode(inviteCode)
+        && isVerifiedUser()
+        && isValidFamilyInvite(incoming(), inviteCode)
+        && incoming().parentUid == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().acceptedByUid == ''
+        && incoming().acceptedChildName == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && hasParentAccount(request.auth.uid);
+
+      allow update: if isValidInviteCode(inviteCode)
+        && isVerifiedUser()
+        && isValidFamilyInvite(incoming(), inviteCode)
+        && existing().status == 'pending'
+        && incoming().code == existing().code
+        && incoming().parentUid == existing().parentUid
+        && incoming().parentName == existing().parentName
+        && incoming().childLabel == existing().childLabel
+        && incoming().invitedEmail == existing().invitedEmail
+        && incoming().expiresAt == existing().expiresAt
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Parent revokes invite
+          (
+            existing().parentUid == request.auth.uid
+            && incoming().status == 'revoked'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+          // Action 2: Invited child atomically accepts invite and creates familyLinks doc
+          || (
+            request.auth.uid != existing().parentUid
+            && (existing().invitedEmail == '' || (request.auth.token.email is string && existing().invitedEmail == request.auth.token.email.lower()))
+            && incoming().status == 'accepted'
+            && incoming().acceptedByUid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'acceptedByUid', 'acceptedChildName', 'updatedAt'])
+            && existsAfter(/databases/$(database)/documents/familyLinks/$(existing().parentUid + '__' + request.auth.uid))
+          )
+        );
+
+      allow delete: if isValidInviteCode(inviteCode)
+        && isVerifiedUser()
+        && existing().parentUid == request.auth.uid;
+    }
+
+    // =====================================================
+    // Active Family Links (parentUid__childUid)
+    // =====================================================
+    match /familyLinks/{linkId} {
+      allow get: if isValidLinkId(linkId) && isVerifiedUser() && (
+        resource == null
+        || existing().parentUid == request.auth.uid
+        || existing().childUid == request.auth.uid
+      );
+
+      allow list: if isVerifiedUser() && (
+        existing().parentUid == request.auth.uid
+        || existing().childUid == request.auth.uid
+      );
+
+      allow create: if isValidLinkId(linkId)
+        && isVerifiedUser()
+        && isValidFamilyLink(incoming(), linkId)
+        && incoming().childUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && hasParentAccount(request.auth.uid)
+        && exists(/databases/$(database)/documents/familyInvites/$(incoming().inviteCode))
+        && get(/databases/$(database)/documents/familyInvites/$(incoming().inviteCode)).data.parentUid == incoming().parentUid
+        && get(/databases/$(database)/documents/familyInvites/$(incoming().inviteCode)).data.status == 'pending'
+        && getAfter(/databases/$(database)/documents/familyInvites/$(incoming().inviteCode)).data.status == 'accepted'
+        && getAfter(/databases/$(database)/documents/familyInvites/$(incoming().inviteCode)).data.acceptedByUid == request.auth.uid;
+
+      allow update: if isValidLinkId(linkId)
+        && isVerifiedUser()
+        && isValidFamilyLink(incoming(), linkId)
+        && incoming().id == existing().id
+        && incoming().parentUid == existing().parentUid
+        && incoming().childUid == existing().childUid
+        && incoming().inviteCode == existing().inviteCode
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            existing().parentUid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['dailyTimeLimitMinutes', 'updatedAt'])
+          )
+          || (
+            existing().childUid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['childName', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidLinkId(linkId)
+        && isVerifiedUser()
+        && (existing().parentUid == request.auth.uid || existing().childUid == request.auth.uid);
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles, MessageCircle, Lightbulb, Send, X, ArrowRight, ShieldCheck, Compass } from 'lucide-react';
 import { Problem, GradeLevel } from '../types';
 
@@ -84,9 +85,9 @@ export const SocraticDrawer: React.FC<SocraticDrawerProps> = ({
     fetchHint();
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
-      <div className="relative w-full max-w-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-7 animate-in fade-in zoom-in-95 duration-200">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 pt-16 pb-24 sm:p-6 overflow-y-auto">
+      <div className="relative w-full max-w-xl my-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-7 max-h-[88vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -228,6 +229,7 @@ export const SocraticDrawer: React.FC<SocraticDrawerProps> = ({
           <span>Sokratovský princip: AI tě navádí krok za krokem, aby tě zkouška nepřekvapila.</span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
